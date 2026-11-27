@@ -8,14 +8,14 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
       manifest: false,
-      includeAssets: ['icon.svg', 'manifest.json'],
+      includeAssets: ['icon.svg', 'manifest.json', 'pk-roads.json'],
       devOptions: {
         enabled: true,
         suppressWarnings: true
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,json,woff2}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\.maptiler\.com\/(?:tiles|maps|resources)\/.*/i,

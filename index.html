@@ -29,9 +29,9 @@
         <div id="gta-banner-sub" class="gta-banner__sub">0.0 КМ • 0 МИН</div>
       </div>
 
-      <!-- Left Control Panel (GTA SA Menu Aesthetic) -->
+      <!-- Top Swipeable Control Sheet -->
       <aside class="hud-panel" id="hud-panel">
-        <header class="hud-header">
+        <header class="hud-header" id="hud-header">
           <div class="hud-header__brand">
             <span class="hud-header__tag">GPS // 41 RUS</span>
             <h1 class="hud-header__title">ПЕТРОПАВЛОВСК-КАМЧАТСКИЙ</h1>
@@ -47,30 +47,59 @@
         </header>
 
         <div class="hud-body" id="hud-body">
-          <!-- Mode Switcher -->
-          <div class="mode-switch" role="group" aria-label="Режим карты">
+          <!-- Compact Map Style Menu Trigger + Rounded Submenu -->
+          <div class="style-menu-wrap">
             <button
-              id="mode-gta"
-              class="mode-switch__btn is-active"
-              data-mode="gta"
+              id="btn-style-menu"
+              class="gta-btn gta-btn--ghost gta-btn--full style-menu-trigger"
               type="button"
+              aria-expanded="false"
             >
-              СТИЛЬ GTA SA
+              <span id="style-menu-label">СТИЛЬ КАРТЫ: GTA SA</span>
+              <span class="style-menu-chevron">▾</span>
             </button>
-            <button
-              id="mode-satellite"
-              class="mode-switch__btn"
-              data-mode="satellite"
-              type="button"
-            >
-              СПУТНИК
-            </button>
+
+            <div id="style-submenu" class="style-submenu hidden">
+              <div class="style-submenu__modes" role="group" aria-label="Режим карты">
+                <button
+                  id="mode-gta"
+                  class="style-mode-btn is-active"
+                  data-mode="gta"
+                  type="button"
+                >
+                  GTA SA
+                </button>
+                <button
+                  id="mode-satellite"
+                  class="style-mode-btn"
+                  data-mode="satellite"
+                  type="button"
+                >
+                  СПУТНИК
+                </button>
+              </div>
+
+              <div class="style-submenu__options">
+                <label class="style-option">
+                  <span>3D-здания</span>
+                  <input id="opt-buildings" type="checkbox" checked />
+                </label>
+                <label class="style-option">
+                  <span>Иконки мест (Blips)</span>
+                  <input id="opt-blips" type="checkbox" checked />
+                </label>
+                <label class="style-option">
+                  <span>Подписи районов и бухты</span>
+                  <input id="opt-places" type="checkbox" checked />
+                </label>
+              </div>
+            </div>
           </div>
 
-          <!-- Search Box -->
+          <!-- Search Box (Always assigns Destination Point B) -->
           <div class="search-section">
             <div class="search-header">
-              <label for="search-input" class="section-label">ПОИСК МЕСТА / АДРЕСА</label>
+              <label for="search-input" class="section-label">ПОИСК ПУНКТА НАЗНАЧЕНИЯ</label>
             </div>
             <div class="search-box">
               <input
@@ -86,33 +115,19 @@
             <ul id="search-results" class="search-results hidden"></ul>
           </div>
 
-          <!-- Waypoints A / B -->
+          <!-- Destination Waypoint (Point B only; Position is strict GPS) -->
           <div class="waypoints">
-            <div class="waypoint-row" id="row-a">
-              <span class="wp-badge wp-badge--a">A</span>
-              <div class="wp-info">
-                <span class="wp-label">ТОЧКА СТАРТА</span>
-                <span id="label-a" class="wp-value">Кликните на карту</span>
-              </div>
-              <button id="pick-a" class="wp-pick-btn is-picking" type="button" title="Указать точку А кликом по карте">
-                НА КАРТЕ
-              </button>
-            </div>
-
             <div class="waypoint-row" id="row-b">
               <span class="wp-badge wp-badge--b">B</span>
               <div class="wp-info">
                 <span class="wp-label">ПУНКТ НАЗНАЧЕНИЯ</span>
-                <span id="label-b" class="wp-value">Кликните на карту или найдите</span>
+                <span id="label-b" class="wp-value">Удерживайте карту или найдите</span>
               </div>
-              <button id="pick-b" class="wp-pick-btn" type="button" title="Указать точку Б кликом по карте">
-                НА КАРТЕ
-              </button>
             </div>
 
             <div class="wp-actions">
               <button id="btn-clear" class="gta-btn gta-btn--ghost gta-btn--full" type="button">
-                ✕ СБРОС
+                ✕ СБРОС МАРШРУТА
               </button>
             </div>
           </div>
@@ -127,6 +142,17 @@
             >
               ПОДРОБНЕЕ О МАРШРУТЕ
             </button>
+
+            <div id="route-details-body" class="stats-grid hidden">
+              <div class="stat-box">
+                <span class="stat-box__label">ОСТАЛОСЬ</span>
+                <span id="stat-distance" class="stat-box__val">— КМ</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-box__label">ВРЕМЯ В ПУТИ</span>
+                <span id="stat-duration" class="stat-box__val">— МИН</span>
+              </div>
+            </div>
 
             <div class="offline-box">
               <button
@@ -146,19 +172,8 @@
               </div>
             </div>
 
-            <div id="route-details-body" class="stats-grid hidden">
-              <div class="stat-box">
-                <span class="stat-box__label">ДИСТАНЦИЯ</span>
-                <span id="stat-distance" class="stat-box__val">— КМ</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-box__label">ВРЕМЯ В ПУТИ</span>
-                <span id="stat-duration" class="stat-box__val">— МИН</span>
-              </div>
-            </div>
-
             <div id="route-status" class="route-status">
-              Укажите Точку А и Точку Б для построения маршрута
+              Удерживайте точку на карте (0.5 сек) или введите адрес
             </div>
 
             <div class="trip-controls">
@@ -173,32 +188,64 @@
             </div>
           </div>
         </div>
+
+        <div class="hud-grabber" aria-hidden="true"><span></span></div>
       </aside>
+
+      <!-- Compact Remaining Distance & ETA Pill (shown when collapsed during active route) -->
+      <div id="route-eta-pill" class="route-eta-pill hidden" aria-live="polite">
+        <div class="route-eta-pill__item">
+          <span class="route-eta-pill__key">ДО ЦЕЛИ</span>
+          <span id="eta-pill-dist" class="route-eta-pill__val">— КМ</span>
+        </div>
+        <div class="route-eta-pill__sep"></div>
+        <div class="route-eta-pill__item">
+          <span class="route-eta-pill__key">ВРЕМЯ</span>
+          <span id="eta-pill-time" class="route-eta-pill__val">— МИН</span>
+        </div>
+      </div>
+
+      <!-- Long-Press Destination Confirmation Modal -->
+      <div id="confirm-modal" class="confirm-modal hidden" role="dialog" aria-modal="true">
+        <div class="confirm-modal__title">ПОЕХАЛИ СЮДА?</div>
+        <div id="confirm-modal-place" class="confirm-modal__place">Определение адреса...</div>
+        <div class="confirm-modal__actions">
+          <button id="btn-confirm-go" class="gta-btn gta-btn--primary" type="button">
+            ДА, ЕДЕМ
+          </button>
+          <button id="btn-confirm-cancel" class="gta-btn gta-btn--ghost" type="button">
+            ОТМЕНА
+          </button>
+        </div>
+      </div>
 
       <!-- Map Hint Toast -->
       <div id="map-hint" class="map-hint">
-        Кликните по карте, чтобы поставить <strong id="map-hint-target">Точку А</strong>
+        Удерживайте точку на карте (0.5 сек), чтобы выбрать <strong>цель</strong>
       </div>
 
-      <!-- Bottom-Left GTA SA Digital Speedometer -->
+      <!-- Bottom-Left Digital Speedometer -->
       <div class="speedometer-hud" id="speedometer-hud" aria-live="polite">
         <span id="speed-readout" class="speedometer-hud__val">0</span>
         <span class="speedometer-hud__unit">КМ/Ч</span>
       </div>
 
-      <!-- GTA SA District Name Toast (Bottom-Right above buttons) -->
+      <!-- GTA SA District Name Toast -->
       <div id="district-toast" class="district-toast" aria-live="polite"></div>
 
-      <!-- Bottom-Right Controls -->
+      <!-- Bottom-Right Visual Toggle Switches -->
       <div class="cam-controls">
-        <button id="btn-gps" class="gta-btn gta-btn--mini" type="button" title="Включить реальный GPS-трекинг">
-          МОЙ GPS
+        <button id="btn-gps" class="hud-toggle is-on" type="button" aria-pressed="true">
+          <span class="hud-toggle__label">GPS</span>
+          <span class="hud-toggle__track"><span class="hud-toggle__thumb"></span></span>
         </button>
-        <button id="btn-toggle-streets" class="gta-btn gta-btn--mini is-active" type="button" title="Показать/скрыть названия улиц">
-          УЛИЦЫ
+        <button id="btn-toggle-streets" class="hud-toggle is-on" type="button" aria-pressed="true">
+          <span class="hud-toggle__label">УЛИЦЫ</span>
+          <span class="hud-toggle__track"><span class="hud-toggle__thumb"></span></span>
         </button>
-        <button id="btn-toggle-3d" class="gta-btn gta-btn--mini is-active" type="button" title="Переключить режим 3D / 2D">
-          3D РЕЛЬЕФ
+        <button id="btn-toggle-3d" class="hud-toggle is-on" type="button" aria-pressed="true">
+          <span class="hud-toggle__label">3D</span>
+          <span class="hud-toggle__track"><span class="hud-toggle__thumb"></span></span>
         </button>
       </div>
     </div>
