@@ -1,18 +1,21 @@
 :root {
-  --gta-bg: rgba(11, 13, 11, 0.92);
-  --gta-bg-solid: #0b0d0b;
-  --gta-panel: #161814;
-  --gta-border: #000000;
-  --gta-edge: rgba(255, 255, 255, 0.14);
-  --gta-text: #f0ede0;
-  --gta-muted: #9e9c8f;
-  --gta-green: #69a84f;
-  --gta-green-bright: #8ad169;
-  --gta-yellow: #ffcc00;
-  --gta-gold: #e3b544;
-  --gta-red: #d94136;
+  --hud-bg: rgba(16, 18, 21, 0.93);
+  --hud-bg-solid: #111315;
+  --hud-surface: #1b1e23;
+  --hud-surface-2: #24282e;
+  --hud-border: #2c3138;
+  --hud-edge: rgba(255, 255, 255, 0.12);
+  --hud-text: #eceff4;
+  --hud-muted: #8e9299;
+  --hud-accent: #b0b4ba;
+  --hud-accent-strong: #d2d6dc;
+  --hud-dark-text: #101214;
+  --hud-route: #ffcc00;
+  --hud-danger: #c94a42;
   --font-display: 'Oswald', sans-serif;
   --font-hud: 'Chakra Petch', sans-serif;
+  --radius-lg: 12px;
+  --radius-md: 10px;
 }
 
 * {
@@ -30,7 +33,7 @@ body,
   overflow: hidden;
   background: #111111;
   font-family: var(--font-hud);
-  color: var(--gta-text);
+  color: var(--hud-text);
   user-select: none;
   touch-action: manipulation;
 }
@@ -47,21 +50,26 @@ body,
   display: none !important;
 }
 
-/* GTA SA Popup Banner */
+.hidden {
+  display: none !important;
+}
+
+/* GTA SA Popup Banner (Monochrome Graphite + Metallic Gray) */
 .gta-banner {
   position: fixed;
   top: calc(20px + env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%) translateY(-18px) scale(0.95);
-  z-index: 40;
+  z-index: 45;
   pointer-events: none;
   opacity: 0;
-  background: rgba(8, 9, 8, 0.92);
-  border: 3px solid #000;
+  background: rgba(14, 16, 18, 0.94);
+  border: 2px solid var(--hud-border);
+  border-radius: var(--radius-lg);
   box-shadow:
-    inset 0 0 0 2px rgba(227, 181, 68, 0.45),
-    0 8px 28px rgba(0, 0, 0, 0.78);
-  padding: 12px 28px;
+    inset 0 0 0 1px rgba(176, 180, 186, 0.25),
+    0 12px 32px rgba(0, 0, 0, 0.78);
+  padding: 12px 26px;
   text-align: center;
   max-width: calc(100vw - 24px);
   transition:
@@ -76,21 +84,17 @@ body,
 
 .gta-banner__title {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 25px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--gta-gold);
-  text-shadow:
-    2px 2px 0 #000,
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000;
+  color: var(--hud-accent-strong);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
   line-height: 1.1;
 }
 
 .gta-banner.is-finished .gta-banner__title {
-  color: var(--gta-green-bright);
+  color: #ffffff;
 }
 
 .gta-banner__sub {
@@ -99,11 +103,11 @@ body,
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.14em;
-  color: var(--gta-text);
+  color: var(--hud-muted);
   text-transform: uppercase;
 }
 
-/* Left HUD Panel */
+/* Top Swipeable HUD Panel */
 .hud-panel {
   position: fixed;
   top: calc(14px + env(safe-area-inset-top));
@@ -113,11 +117,14 @@ body,
   max-width: calc(100vw - 28px);
   display: flex;
   flex-direction: column;
-  background: var(--gta-bg);
-  border: 3px solid var(--gta-border);
+  background: var(--hud-bg);
+  border: 2px solid var(--hud-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
   box-shadow:
-    inset 0 0 0 1px var(--gta-edge),
-    0 10px 30px rgba(0, 0, 0, 0.72);
+    inset 0 0 0 1px var(--hud-edge),
+    0 12px 30px rgba(0, 0, 0, 0.72);
+  touch-action: pan-x;
 }
 
 .hud-panel.is-collapsed .hud-body {
@@ -129,13 +136,15 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
-  background: #060706;
-  border-bottom: 3px solid #000;
+  padding: 10px 12px 8px;
+  background: #0d0f11;
+  border-bottom: 1px solid var(--hud-border);
+  cursor: pointer;
 }
 
 .hud-panel.is-collapsed .hud-header {
   border-bottom: none;
+  padding-bottom: 6px;
 }
 
 .hud-header__tag {
@@ -143,7 +152,7 @@ body,
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: var(--gta-yellow);
+  color: var(--hud-muted);
 }
 
 .hud-header__title {
@@ -152,15 +161,16 @@ body,
   font-weight: 700;
   letter-spacing: 0.05em;
   line-height: 1.15;
-  color: var(--gta-text);
+  color: var(--hud-text);
 }
 
 .hud-icon-btn {
-  width: 34px;
-  height: 34px;
-  border: 2px solid #000;
-  background: #1f221d;
-  color: var(--gta-text);
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
+  background: var(--hud-surface-2);
+  color: var(--hud-text);
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
@@ -168,7 +178,23 @@ body,
 }
 
 .hud-icon-btn:hover {
-  background: #2f332c;
+  background: #30353d;
+}
+
+.hud-grabber {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 6px;
+  background: #0d0f11;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.hud-grabber span {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--hud-muted);
+  opacity: 0.55;
 }
 
 .hud-body {
@@ -178,36 +204,79 @@ body,
   gap: 10px;
 }
 
-/* Style Mode Switcher */
-.mode-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border: 2px solid #000;
-  background: #070807;
+/* Compact Map Style Menu */
+.style-menu-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.mode-switch__btn {
+.style-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px !important;
+}
+
+.style-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px;
+  background: var(--hud-surface);
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
+}
+
+.style-submenu__modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.style-mode-btn {
   min-height: 38px;
-  padding: 8px 10px;
-  border: none;
-  background: transparent;
-  color: var(--gta-muted);
+  padding: 6px 10px;
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
+  background: #14171a;
+  color: var(--hud-muted);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.08em;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
 }
 
-.mode-switch__btn + .mode-switch__btn {
-  border-left: 2px solid #000;
-}
-
-.mode-switch__btn.is-active {
-  background: var(--gta-green);
-  color: #050705;
+.style-mode-btn.is-active {
+  background: var(--hud-accent);
+  border-color: var(--hud-accent-strong);
+  color: var(--hud-dark-text);
   font-weight: 700;
+}
+
+.style-submenu__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.style-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hud-text);
+  padding: 2px 2px;
+  cursor: pointer;
+}
+
+.style-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--hud-accent);
+  cursor: pointer;
 }
 
 /* Search Section */
@@ -222,23 +291,24 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
 }
 
 .section-label {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: var(--gta-muted);
+  color: var(--hud-muted);
 }
 
 .search-box {
   display: flex;
-  border: 2px solid #000;
-  background: #0b0c0b;
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
+  background: #0e1013;
+  overflow: hidden;
 }
 
-/* font-size >= 16px prevents mobile Safari/Android zoom on focus */
+/* font-size >= 16px prevents mobile browser zoom on focus */
 .search-box input {
   flex: 1;
   min-width: 0;
@@ -247,14 +317,14 @@ body,
   border: none;
   outline: none;
   background: transparent;
-  color: var(--gta-text);
+  color: var(--hud-text);
   font-family: var(--font-hud);
   font-size: 16px;
   font-weight: 500;
 }
 
 .search-box input::placeholder {
-  color: #6b6a60;
+  color: #6b7078;
   font-size: 14px;
 }
 
@@ -262,9 +332,9 @@ body,
   min-height: 42px;
   padding: 0 14px;
   border: none;
-  border-left: 2px solid #000;
-  background: #232620;
-  color: var(--gta-yellow);
+  border-left: 1.5px solid var(--hud-border);
+  background: var(--hud-surface-2);
+  color: var(--hud-accent-strong);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
@@ -273,84 +343,86 @@ body,
 }
 
 .search-box__btn:hover {
-  background: #33382e;
+  background: #30353d;
 }
 
 .search-results {
   position: absolute;
   top: 100%;
-  margin-top: 2px;
+  margin-top: 4px;
   left: 0;
   right: 0;
   z-index: 35;
   list-style: none;
   max-height: 210px;
   overflow-y: auto;
-  background: #0b0d0b;
-  border: 2px solid #000;
+  background: var(--hud-bg-solid);
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.85);
 }
 
 .search-results li {
-  padding: 10px 10px;
-  border-bottom: 1px solid #232620;
+  padding: 10px 11px;
+  border-bottom: 1px solid var(--hud-border);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+.search-results li:last-child {
+  border-bottom: none;
+}
+
 .search-results li:hover {
-  background: #22261e;
+  background: var(--hud-surface-2);
 }
 
 .search-results__name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--gta-text);
+  color: var(--hud-text);
 }
 
 .search-results__meta {
   font-size: 11px;
-  color: var(--gta-muted);
+  color: var(--hud-muted);
 }
 
-/* Waypoints */
+/* Destination Waypoint Card */
 .waypoints {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .waypoint-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
-  background: var(--gta-panel);
-  border: 2px solid #000;
+  gap: 9px;
+  padding: 8px 10px;
+  background: var(--hud-surface);
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
 }
 
 .wp-badge {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
-  border: 2px solid #000;
+  border: 1.5px solid #000;
+  border-radius: 8px;
   font-family: var(--font-display);
   font-size: 15px;
   font-weight: 700;
   flex-shrink: 0;
 }
 
-.wp-badge--a {
-  background: var(--gta-green);
-  color: #000;
-}
-
 .wp-badge--b {
-  background: var(--gta-red);
-  color: #fff;
+  background: var(--hud-accent);
+  color: var(--hud-dark-text);
 }
 
 .wp-info {
@@ -364,45 +436,27 @@ body,
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.14em;
-  color: var(--gta-muted);
+  color: var(--hud-muted);
 }
 
 .wp-value {
   font-size: 12px;
   font-weight: 600;
-  color: var(--gta-text);
+  color: var(--hud-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.wp-pick-btn {
-  min-height: 32px;
-  padding: 4px 8px;
-  border: 2px solid #000;
-  background: #252922;
-  color: var(--gta-text);
-  font-family: var(--font-hud);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.wp-pick-btn.is-picking {
-  background: var(--gta-yellow);
-  color: #000;
 }
 
 .wp-actions {
   display: block;
 }
 
-/* GTA Buttons */
+/* Monochrome Graphite & Metallic Gray Buttons */
 .gta-btn {
-  padding: 9px 10px;
-  border: 2px solid #000;
+  padding: 9px 12px;
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
@@ -417,61 +471,44 @@ body,
 }
 
 .gta-btn:disabled {
-  opacity: 0.42;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .gta-btn--ghost {
-  background: #1d201a;
-  color: var(--gta-text);
+  background: var(--hud-surface-2);
+  color: var(--hud-text);
   font-size: 12px;
   padding: 8px 10px;
 }
 
 .gta-btn--ghost:hover:not(:disabled) {
-  background: #2c3027;
+  background: #30353d;
 }
 
 .gta-btn--full {
   width: 100%;
 }
 
-.hidden {
-  display: none !important;
-}
-
 .gta-btn--primary {
-  background: var(--gta-yellow);
-  color: #000;
+  background: var(--hud-accent);
+  border-color: var(--hud-accent-strong);
+  color: var(--hud-dark-text);
 }
 
 .gta-btn--primary:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--hud-accent-strong);
 }
 
 .gta-btn--danger {
-  background: #291817;
-  color: #ff8c84;
+  background: #271a1a;
+  border-color: #4a2a2a;
+  color: #e69d98;
 }
 
 .gta-btn--danger:hover:not(:disabled) {
-  background: var(--gta-red);
-  color: #fff;
-}
-
-.gta-btn--mini {
-  min-height: 44px;
-  background: rgba(11, 13, 11, 0.92);
-  color: var(--gta-text);
-  font-size: 12px;
-  padding: 0 11px;
-  white-space: nowrap;
-  box-shadow: inset 0 0 0 1px var(--gta-edge);
-}
-
-.gta-btn--mini.is-active {
-  background: var(--gta-green);
-  color: #000;
+  background: var(--hud-danger);
+  color: #ffffff;
 }
 
 /* Route Panel */
@@ -480,7 +517,7 @@ body,
   flex-direction: column;
   gap: 8px;
   padding-top: 8px;
-  border-top: 2px solid #000;
+  border-top: 1px solid var(--hud-border);
 }
 
 .stats-grid {
@@ -490,9 +527,10 @@ body,
 }
 
 .stat-box {
-  padding: 7px 9px;
-  background: #0c0e0b;
-  border: 2px solid #000;
+  padding: 8px 10px;
+  background: #0e1013;
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
 }
@@ -501,26 +539,26 @@ body,
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.14em;
-  color: var(--gta-muted);
+  color: var(--hud-muted);
 }
 
 .stat-box__val {
   font-family: var(--font-display);
   font-size: 20px;
   font-weight: 700;
-  color: var(--gta-yellow);
+  color: var(--hud-accent-strong);
   line-height: 1.15;
 }
 
 .route-status {
   font-size: 11px;
   font-weight: 600;
-  color: #c5c2b2;
+  color: var(--hud-muted);
   min-height: 16px;
 }
 
 .route-status.is-error {
-  color: #ff7970;
+  color: #e69d98;
 }
 
 .trip-controls {
@@ -543,72 +581,155 @@ body,
 }
 
 #btn-download-map.is-cached {
-  border-color: #000;
-  color: var(--gta-green-bright);
+  background: var(--hud-accent);
+  border-color: var(--hud-accent-strong);
+  color: var(--hud-dark-text);
 }
 
 .offline-progress {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 5px 7px;
-  background: #0c0e0b;
-  border: 2px solid #000;
+  padding: 6px 8px;
+  background: #0e1013;
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
 }
 
 .offline-progress__head {
   font-size: 11px;
   font-weight: 600;
-  color: var(--gta-yellow);
+  color: var(--hud-accent-strong);
   letter-spacing: 0.04em;
-}
-
-.offline-progress.is-done .offline-progress__head {
-  color: var(--gta-green-bright);
 }
 
 .offline-progress__track {
   width: 100%;
   height: 6px;
-  background: #1c1f1a;
-  border: 1px solid #000;
+  background: #20242a;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .offline-progress__bar {
   width: 0%;
   height: 100%;
-  background: var(--gta-yellow);
+  background: var(--hud-accent);
   transition: width 0.12s linear;
 }
 
 .offline-progress.is-done .offline-progress__bar {
-  background: var(--gta-green-bright);
+  background: var(--hud-accent-strong);
+}
+
+/* Compact Remaining Distance & ETA Pill (when collapsed) */
+.route-eta-pill {
+  position: fixed;
+  top: calc(92px + env(safe-area-inset-top));
+  left: 14px;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--hud-bg);
+  border: 2px solid var(--hud-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.72);
+}
+
+.route-eta-pill__item {
+  display: flex;
+  flex-direction: column;
+}
+
+.route-eta-pill__key {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--hud-muted);
+}
+
+.route-eta-pill__val {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--hud-accent-strong);
+  line-height: 1.1;
+}
+
+.route-eta-pill__sep {
+  width: 1px;
+  height: 26px;
+  background: var(--hud-border);
+}
+
+/* Long-Press Confirmation Modal */
+.confirm-modal {
+  position: fixed;
+  left: 50%;
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 42;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  padding: 14px;
+  background: var(--hud-bg);
+  border: 2px solid var(--hud-accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.85);
+  text-align: center;
+}
+
+.confirm-modal__title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--hud-text);
+}
+
+.confirm-modal__place {
+  margin-top: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hud-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.confirm-modal__actions {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 8px;
 }
 
 /* Map Hint */
 .map-hint {
   position: fixed;
-  bottom: calc(72px + env(safe-area-inset-bottom));
+  bottom: calc(74px + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
-  padding: 5px 12px;
+  padding: 6px 13px;
   max-width: calc(100vw - 24px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: rgba(10, 12, 10, 0.88);
-  border: 2px solid #000;
+  background: rgba(16, 18, 21, 0.9);
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
   font-size: 11px;
   font-weight: 600;
-  color: var(--gta-text);
+  color: var(--hud-muted);
   letter-spacing: 0.04em;
   pointer-events: none;
 }
 
 .map-hint strong {
-  color: var(--gta-yellow);
+  color: var(--hud-accent-strong);
 }
 
 /* Bottom-Left Digital Speedometer */
@@ -620,49 +741,45 @@ body,
   display: flex;
   align-items: baseline;
   gap: 6px;
-  padding: 6px 12px;
-  background: rgba(11, 13, 11, 0.88);
-  border: 3px solid #000;
+  padding: 6px 13px;
+  background: var(--hud-bg);
+  border: 2px solid var(--hud-border);
+  border-radius: var(--radius-lg);
   box-shadow:
-    inset 0 0 0 1px var(--gta-edge),
+    inset 0 0 0 1px var(--hud-edge),
     0 6px 18px rgba(0, 0, 0, 0.72);
   pointer-events: none;
 }
 
 .speedometer-hud__val {
   font-family: var(--font-display);
-  font-size: 38px;
+  font-size: 36px;
   font-weight: 700;
   line-height: 1;
   color: #ffffff;
   font-variant-numeric: tabular-nums;
-  text-shadow:
-    2px 2px 0 #000,
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
 }
 
 .speedometer-hud__unit {
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: var(--gta-yellow);
-  text-shadow: 1px 1px 0 #000;
+  color: var(--hud-accent);
 }
 
 /* Bottom-Right District Toast */
 .district-toast {
   position: fixed;
   right: 16px;
-  bottom: calc(74px + env(safe-area-inset-bottom));
+  bottom: calc(76px + env(safe-area-inset-bottom));
   z-index: 26;
   pointer-events: none;
   opacity: 0;
   transform: translateY(8px);
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -682,7 +799,7 @@ body,
   transform: translateY(0);
 }
 
-/* Bottom-Right Controls */
+/* Bottom-Right Visual Toggle Switches */
 .cam-controls {
   position: fixed;
   right: 16px;
@@ -691,26 +808,71 @@ body,
   display: flex;
   flex-wrap: nowrap;
   gap: 6px;
+  padding: 4px;
+  background: rgba(14, 16, 18, 0.82);
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.72);
 }
 
-#btn-gps.is-active {
-  background: var(--gta-yellow);
-  color: #000000;
+.hud-toggle {
+  min-height: 44px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1.5px solid var(--hud-border);
+  border-radius: var(--radius-md);
+  background: var(--hud-surface);
+  color: var(--hud-muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
 }
 
-/* Custom Map Markers (No square background on Point A / player cursor) */
-.gta-marker-pin--a {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  cursor: grab;
-  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.85));
+.hud-toggle__track {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: #0d0f11;
+  border: 1px solid var(--hud-border);
+  flex-shrink: 0;
+  transition: background 0.16s ease;
 }
 
+.hud-toggle__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hud-muted);
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.hud-toggle.is-on {
+  background: var(--hud-accent);
+  border-color: var(--hud-accent-strong);
+  color: var(--hud-dark-text);
+}
+
+.hud-toggle.is-on .hud-toggle__track {
+  background: #23272d;
+  border-color: #16181c;
+}
+
+.hud-toggle.is-on .hud-toggle__thumb {
+  transform: translateX(12px);
+  background: #eceff4;
+}
+
+/* Custom Map Markers (No square background on player cursor) */
 .gta-marker-pin--b {
   width: 34px;
   height: 34px;
@@ -720,7 +882,6 @@ body,
   border: none;
   box-shadow: none;
   filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.85));
-  cursor: grab;
 }
 
 .gta-player-arrow {
@@ -732,32 +893,32 @@ body,
 
 /* GTA SA POI Popup Card */
 .gta-poi-popup .maplibregl-popup-content {
-  padding: 10px 12px;
-  background: var(--gta-bg-solid);
-  border: 3px solid #000000;
-  border-radius: 0;
+  padding: 11px 13px;
+  background: var(--hud-bg-solid);
+  border: 2px solid var(--hud-border);
+  border-radius: var(--radius-lg);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
-    0 8px 24px rgba(0, 0, 0, 0.85);
-  color: var(--gta-text);
+    inset 0 0 0 1px var(--hud-edge),
+    0 10px 26px rgba(0, 0, 0, 0.85);
+  color: var(--hud-text);
   font-family: var(--font-hud);
-  min-width: 210px;
-  max-width: 260px;
+  min-width: 215px;
+  max-width: 265px;
 }
 
 .gta-poi-popup .maplibregl-popup-tip {
-  border-top-color: #000000 !important;
-  border-bottom-color: #000000 !important;
+  border-top-color: var(--hud-border) !important;
+  border-bottom-color: var(--hud-border) !important;
 }
 
 .gta-poi-popup .maplibregl-popup-close-button {
-  color: var(--gta-muted);
+  color: var(--hud-muted);
   font-size: 16px;
-  padding: 2px 7px;
+  padding: 4px 8px;
 }
 
 .gta-poi-popup .maplibregl-popup-close-button:hover {
-  color: var(--gta-yellow);
+  color: var(--hud-text);
   background: transparent;
 }
 
@@ -766,7 +927,7 @@ body,
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.14em;
-  color: var(--gta-yellow);
+  color: var(--hud-muted);
   margin-bottom: 3px;
 }
 
@@ -776,7 +937,7 @@ body,
   font-weight: 700;
   line-height: 1.2;
   color: #ffffff;
-  margin-bottom: 9px;
+  margin-bottom: 10px;
   padding-right: 16px;
 }
 
@@ -784,9 +945,10 @@ body,
   width: 100%;
   min-height: 42px;
   padding: 7px 10px;
-  border: 2px solid #000000;
-  background: var(--gta-yellow);
-  color: #000000;
+  border: 1.5px solid var(--hud-accent-strong);
+  border-radius: var(--radius-md);
+  background: var(--hud-accent);
+  color: var(--hud-dark-text);
   font-family: var(--font-display);
   font-size: 13px;
   font-weight: 700;
@@ -795,7 +957,7 @@ body,
 }
 
 .poi-card__btn:hover {
-  filter: brightness(1.08);
+  background: var(--hud-accent-strong);
 }
 
 /* Mobile & Smartphone Adaptation */
@@ -820,12 +982,16 @@ body,
     height: 42px;
   }
 
-  .mode-switch__btn,
+  .style-mode-btn,
   .search-box input,
   .search-box__btn,
-  .gta-btn,
-  .wp-pick-btn {
+  .gta-btn {
     min-height: 44px;
+  }
+
+  .route-eta-pill {
+    top: calc(94px + env(safe-area-inset-top));
+    left: 10px;
   }
 
   .map-hint {
@@ -835,7 +1001,7 @@ body,
   .speedometer-hud {
     left: 10px;
     bottom: calc(12px + env(safe-area-inset-bottom));
-    padding: 4px 9px;
+    padding: 6px 10px;
     gap: 4px;
   }
 
@@ -850,19 +1016,34 @@ body,
   .cam-controls {
     right: 10px;
     bottom: calc(12px + env(safe-area-inset-bottom));
-    gap: 5px;
+    gap: 4px;
+    padding: 3px;
   }
 
-  .gta-btn--mini {
+  .hud-toggle {
     min-height: 44px;
-    padding: 0 9px;
+    padding: 0 7px;
+    gap: 5px;
     font-size: 11px;
-    letter-spacing: 0.04em;
+  }
+
+  .hud-toggle__track {
+    width: 24px;
+    height: 14px;
+  }
+
+  .hud-toggle__thumb {
+    width: 8px;
+    height: 8px;
+  }
+
+  .hud-toggle.is-on .hud-toggle__thumb {
+    transform: translateX(10px);
   }
 
   .district-toast {
     right: 10px;
-    bottom: calc(68px + env(safe-area-inset-bottom));
+    bottom: calc(74px + env(safe-area-inset-bottom));
     font-size: 24px;
   }
 }

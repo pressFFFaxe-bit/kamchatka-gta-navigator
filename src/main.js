@@ -10,27 +10,78 @@ import {
   downloadPetropavlovskOfflineMap,
   isOfflineMapCached
 } from './offlineCache.js';
+import { findOfflineRoadRoute, loadRoadGraph } from './offlineRouter.js';
 
 registerSW({ immediate: true });
 
-const START_CENTER = [158.64, 53.02]; // lon, lat (Petropavlovsk-Kamchatsky)
-const START_ZOOM = 13.6;
+const DEFAULT_CENTER = [158.64, 53.02]; // lon, lat
+const START_ZOOM = 14.2;
 const START_PITCH = 52;
-const START_BEARING = -25;
+const START_BEARING = 0;
 const OFF_ROUTE_THRESHOLD_METERS = 45;
+const ARRIVAL_RADIUS_METERS = 30;
 const REROUTE_COOLDOWN_MS = 6000;
+const MANUAL_CAMERA_RETURN_MS = 5000;
+const LONG_PRESS_MS = 500;
+const LAST_GPS_STORAGE_KEY = 'pk_last_gps_pos';
+
+// Persistence for last valid GPS fix
+function loadSavedGpsPos() {
+  try {
+    const raw = localStorage.getItem(LAST_GPS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      typeof parsed?.lat === 'number' &&
+      typeof parsed?.lon === 'number' &&
+      Number.isFinite(parsed.lat) &&
+      Number.isFinite(parsed.lon)
+    ) {
+      return {
+        lat: parsed.lat,
+        lon: parsed.lon,
+        heading: typeof parsed.heading === 'number' ? parsed.heading : 0
+      };
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return null;
+}
+
+function saveGpsPos(lat, lon, heading) {
+  try {
+    localStorage.setItem(
+      LAST_GPS_STORAGE_KEY,
+      JSON.stringify({ lat, lon, heading, ts: Date.now() })
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+const initialGps = loadSavedGpsPos();
+const initialCoord = initialGps ? [initialGps.lon, initialGps.lat] : DEFAULT_CENTER;
 
 // DOM Elements
+const hudPanelEl = document.getElementById('hud-panel');
+const hudHeaderEl = document.getElementById('hud-header');
+const btnCollapse = document.getElementById('btn-collapse');
+
+const btnStyleMenu = document.getElementById('btn-style-menu');
+const styleMenuLabelEl = document.getElementById('style-menu-label');
+const styleSubmenuEl = document.getElementById('style-submenu');
 const modeGtaBtn = document.getElementById('mode-gta');
 const modeSatBtn = document.getElementById('mode-satellite');
+const optBuildingsEl = document.getElementById('opt-buildings');
+const optBlipsEl = document.getElementById('opt-blips');
+const optPlacesEl = document.getElementById('opt-places');
+
 const searchInput = document.getElementById('search-input');
 const btnSearch = document.getElementById('btn-search');
 const searchResultsEl = document.getElementById('search-results');
 
-const labelAEl = document.getElementById('label-a');
 const labelBEl = document.getElementById('label-b');
-const pickABtn = document.getElementById('pick-a');
-const pickBBtn = document.getElementById('pick-b');
 const btnClear = document.getElementById('btn-clear');
 
 const btnRouteDetails = document.getElementById('btn-route-details');
@@ -39,24 +90,29 @@ const statDistanceEl = document.getElementById('stat-distance');
 const statDurationEl = document.getElementById('stat-duration');
 const routeStatusEl = document.getElementById('route-status');
 
-const btnDrive = document.getElementById('btn-drive');
-const btnStop = document.getElementById('btn-stop');
-
 const btnDownloadMap = document.getElementById('btn-download-map');
 const offlineProgressWrapEl = document.getElementById('offline-progress-wrap');
 const offlineProgressTextEl = document.getElementById('offline-progress-text');
 const offlineProgressBarEl = document.getElementById('offline-progress-bar');
 
-const speedReadoutEl = document.getElementById('speed-readout');
-const mapHintTargetEl = document.getElementById('map-hint-target');
+const btnDrive = document.getElementById('btn-drive');
+const btnStop = document.getElementById('btn-stop');
 
+const routeEtaPillEl = document.getElementById('route-eta-pill');
+const etaPillDistEl = document.getElementById('eta-pill-dist');
+const etaPillTimeEl = document.getElementById('eta-pill-time');
+
+const confirmModalEl = document.getElementById('confirm-modal');
+const confirmModalPlaceEl = document.getElementById('confirm-modal-place');
+const btnConfirmGo = document.getElementById('btn-confirm-go');
+const btnConfirmCancel = document.getElementById('btn-confirm-cancel');
+
+const speedReadoutEl = document.getElementById('speed-readout');
 const gtaBannerEl = document.getElementById('gta-banner');
 const gtaBannerTitleEl = document.getElementById('gta-banner-title');
 const gtaBannerSubEl = document.getElementById('gta-banner-sub');
-
-const hudPanelEl = document.getElementById('hud-panel');
-const btnCollapse = document.getElementById('btn-collapse');
 const districtToastEl = document.getElementById('district-toast');
+
 const btnGps = document.getElementById('btn-gps');
 const btnToggleStreets = document.getElementById('btn-toggle-streets');
 const btnToggle3d = document.getElementById('btn-toggle-3d');
@@ -66,37 +122,43 @@ const state = {
   mapMode: 'gta', // 'gta' | 'satellite'
   terrainEnabled: true,
   streetLabelsVisible: true,
-  pickTarget: 'A', // 'A' | 'B'
-  pointA: null, // { lat, lon, label }
+  buildingsVisible: true,
+  blipsVisible: true,
+  placesVisible: true,
+  playerPos: {
+    lat: initialCoord[1],
+    lon: initialCoord[0],
+    heading: initialGps ? initialGps.heading : 0
+  },
   pointB: null, // { lat, lon, label }
-  markerA: null,
   markerB: null,
   playerMarker: null,
-  route: null, // { coordinates, distanceMeters, durationSeconds }
+  route: null, // { coordinates, distanceMeters, durationSeconds, isOfflineRoad }
   tripActive: false,
   wakeLock: null,
+  manualCameraUntil: 0,
+  manualReturnTimer: null,
+  pendingTarget: null, // { lat, lon, label }
   gps: {
     active: false,
     watchId: null,
     lastCoord: null,
-    lastGeoCoord: null,
     lastRerouteAt: 0,
-    rerouting: false,
-    heading: 0
+    rerouting: false
   },
   currentDistrict: null,
   districtTimer: null,
   bannerTimer: null
 };
 
-// Initialize MapLibre GL JS
+// Initialize MapLibre GL JS centered at last GPS position (or default on very first run)
 const map = new maplibregl.Map({
   container: 'map',
   style: createGtaSaStyle(),
-  center: START_CENTER,
+  center: initialCoord,
   zoom: START_ZOOM,
   pitch: START_PITCH,
-  bearing: START_BEARING,
+  bearing: initialGps ? initialGps.heading : START_BEARING,
   maxPitch: 75,
   antialias: true
 });
@@ -107,7 +169,7 @@ map.on('error', (e) => {
   }
 });
 
-// Geometry & Distance Helpers
+// Geometry Helpers
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
@@ -137,9 +199,6 @@ function lerpAngle(current, target, t) {
   return (current + diff * t + 360) % 360;
 }
 
-/**
- * Shortest distance in meters from point [lon, lat] to a polyline [[lon, lat], ...].
- */
 function distanceToPolylineMeters(point, coordinates) {
   if (!coordinates || coordinates.length === 0) return Infinity;
   if (coordinates.length === 1) return haversineMeters(point, coordinates[0]);
@@ -176,6 +235,30 @@ function distanceToPolylineMeters(point, coordinates) {
   return Math.sqrt(minSq);
 }
 
+/**
+ * Estimates remaining route distance in meters from current position along polyline.
+ */
+function computeRemainingDistanceMeters(coord, route) {
+  const coords = route?.coordinates;
+  if (!coords || coords.length < 2) return route?.distanceMeters || 0;
+
+  let closestIdx = 0;
+  let closestDist = Infinity;
+  for (let i = 0; i < coords.length; i++) {
+    const d = haversineMeters(coord, coords[i]);
+    if (d < closestDist) {
+      closestDist = d;
+      closestIdx = i;
+    }
+  }
+
+  let remaining = closestDist;
+  for (let i = closestIdx; i < coords.length - 1; i++) {
+    remaining += haversineMeters(coords[i], coords[i + 1]);
+  }
+  return remaining;
+}
+
 // UI Helpers
 function showGtaBanner(title, subtitle, variant = 'route') {
   clearTimeout(state.bannerTimer);
@@ -201,16 +284,37 @@ function setStatus(text, isError = false) {
   routeStatusEl.classList.toggle('is-error', isError);
 }
 
+function updateEtaDisplays() {
+  if (!state.route) {
+    statDistanceEl.textContent = '— КМ';
+    statDurationEl.textContent = '— МИН';
+    routeEtaPillEl.classList.add('hidden');
+    return;
+  }
+
+  const playerCoord = [state.playerPos.lon, state.playerPos.lat];
+  const remMeters = state.tripActive
+    ? Math.min(state.route.distanceMeters, computeRemainingDistanceMeters(playerCoord, state.route))
+    : state.route.distanceMeters;
+  const ratio = state.route.distanceMeters > 0 ? remMeters / state.route.distanceMeters : 1;
+  const remSeconds = state.route.durationSeconds * ratio;
+
+  const kmText = `${(remMeters / 1000).toFixed(2)} КМ`;
+  const minText = formatDuration(remSeconds);
+
+  statDistanceEl.textContent = kmText;
+  statDurationEl.textContent = minText;
+  etaPillDistEl.textContent = kmText;
+  etaPillTimeEl.textContent = minText;
+
+  const isCollapsed = hudPanelEl.classList.contains('is-collapsed');
+  routeEtaPillEl.classList.toggle('hidden', !isCollapsed);
+}
+
 function setPanelCollapsed(collapsed) {
   hudPanelEl.classList.toggle('is-collapsed', collapsed);
   btnCollapse.textContent = collapsed ? '▸' : '▾';
-}
-
-function setPickTarget(target) {
-  state.pickTarget = target;
-  pickABtn.classList.toggle('is-picking', target === 'A');
-  pickBBtn.classList.toggle('is-picking', target === 'B');
-  mapHintTargetEl.textContent = target === 'A' ? 'Точку А' : 'Точку Б';
+  updateEtaDisplays();
 }
 
 function updateSpeedometer(speedMps) {
@@ -220,13 +324,6 @@ function updateSpeedometer(speedMps) {
     speedReadoutEl.textContent = '0';
   }
 }
-
-map.on('load', () => {
-  registerGtaPoiBlips(map);
-});
-map.on('styleimagemissing', () => {
-  registerGtaPoiBlips(map);
-});
 
 function showDistrictToast(name) {
   clearTimeout(state.districtTimer);
@@ -264,7 +361,7 @@ async function releaseWakeLock() {
   try {
     await state.wakeLock.release();
   } catch {
-    // Ignore release error
+    // Ignore
   } finally {
     state.wakeLock = null;
   }
@@ -276,7 +373,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Custom Markers: GTA SA White 4-pointed Cross (Player / Point A) & Target Crosshair (Point B)
+// Custom Markers: GTA SA White 4-pointed Cross (GPS Player) & Target Crosshair (Point B)
 const WHITE_CROSS_SVG = `
   <svg viewBox="0 0 40 40" width="38" height="38" aria-hidden="true">
     <polygon
@@ -288,14 +385,6 @@ const WHITE_CROSS_SVG = `
     />
   </svg>
 `;
-
-function createStartPinElement() {
-  const el = document.createElement('div');
-  el.className = 'gta-marker-pin--a';
-  el.title = 'Точка старта (А)';
-  el.innerHTML = WHITE_CROSS_SVG;
-  return el;
-}
 
 function createTargetPinElement() {
   const el = document.createElement('div');
@@ -321,13 +410,6 @@ function createPlayerArrowElement() {
   return wrapper;
 }
 
-function syncStartAndPlayerMarkers() {
-  if (!state.markerA) return;
-  const el = state.markerA.getElement();
-  // Avoid overlapping two crosses when live GPS playerMarker is active
-  el.style.display = state.gps.active && state.playerMarker ? 'none' : 'grid';
-}
-
 function ensurePlayerMarker(coord, bearing = 0) {
   if (!state.playerMarker) {
     state.playerMarker = new maplibregl.Marker({
@@ -342,93 +424,54 @@ function ensurePlayerMarker(coord, bearing = 0) {
   } else {
     state.playerMarker.setLngLat(coord).setRotation(bearing);
   }
-  syncStartAndPlayerMarkers();
 }
 
-function attachWaypointMarker(slot, lat, lon) {
-  const isA = slot === 'A';
-  const existing = isA ? state.markerA : state.markerB;
-  if (existing) {
-    existing.setLngLat([lon, lat]);
-    if (isA) syncStartAndPlayerMarkers();
-    return existing;
+function attachTargetMarker(lat, lon) {
+  if (state.markerB) {
+    state.markerB.setLngLat([lon, lat]);
+    return state.markerB;
   }
-
-  const el = isA ? createStartPinElement() : createTargetPinElement();
-
-  const marker = new maplibregl.Marker({
-    element: el,
+  state.markerB = new maplibregl.Marker({
+    element: createTargetPinElement(),
     anchor: 'center',
-    draggable: true
+    draggable: false
   })
     .setLngLat([lon, lat])
     .addTo(map);
-
-  marker.on('dragend', () => {
-    const pos = marker.getLngLat();
-    setWaypoint(slot, pos.lat, pos.lng, null, false);
-  });
-
-  if (isA) {
-    state.markerA = marker;
-    syncStartAndPlayerMarkers();
-  } else {
-    state.markerB = marker;
-  }
-  return marker;
+  return state.markerB;
 }
 
-// Set Waypoint A or B
-async function setWaypoint(slot, lat, lon, label = null, flyToPoint = false) {
+// Map Load + Warmup Offline Road Graph
+map.on('load', () => {
+  registerGtaPoiBlips(map);
+  ensurePlayerMarker(initialCoord, state.playerPos.heading);
+  // Preload pk-roads.json into memory in background if cached
+  loadRoadGraph().catch(() => {});
+  // Automatically start GPS tracking on launch
+  startGpsTracking();
+});
+
+map.on('styleimagemissing', () => {
+  registerGtaPoiBlips(map);
+});
+
+// Destination Setting (Point B only; Origin is always live GPS playerPos)
+async function setDestination(lat, lon, label = null, flyToRoute = true) {
   const displayLabel = label || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-  const pointObj = { lat, lon, label: displayLabel };
-
-  if (slot === 'A') {
-    state.pointA = pointObj;
-    labelAEl.textContent = displayLabel;
-    attachWaypointMarker('A', lat, lon);
-    if (!state.pointB) {
-      setPickTarget('B');
-    }
-  } else {
-    state.pointB = pointObj;
-    labelBEl.textContent = displayLabel;
-    attachWaypointMarker('B', lat, lon);
-  }
-
-  if (flyToPoint) {
-    map.easeTo({
-      center: [lon, lat],
-      zoom: Math.max(map.getZoom(), 14.4),
-      duration: 650
-    });
-  }
+  state.pointB = { lat, lon, label: displayLabel };
+  labelBEl.textContent = displayLabel;
+  attachTargetMarker(lat, lon);
 
   if (!label) {
     reverseGeocode(lat, lon).then((resolved) => {
-      if (slot === 'A' && state.pointA && state.pointA.lat === lat && state.pointA.lon === lon) {
-        state.pointA.label = resolved;
-        labelAEl.textContent = resolved;
-      }
-      if (slot === 'B' && state.pointB && state.pointB.lat === lat && state.pointB.lon === lon) {
+      if (state.pointB && state.pointB.lat === lat && state.pointB.lon === lon) {
         state.pointB.label = resolved;
         labelBEl.textContent = resolved;
       }
     });
   }
 
-  if (state.pointA && state.pointB) {
-    await calculateAndDrawRoute();
-  }
-}
-
-function setRouteLineStyle(isOfflineDirect) {
-  if (map.getLayer('route-line')) {
-    map.setLayoutProperty('route-line', 'visibility', isOfflineDirect ? 'none' : 'visible');
-  }
-  if (map.getLayer('route-line-dashed')) {
-    map.setLayoutProperty('route-line-dashed', 'visibility', isOfflineDirect ? 'visible' : 'none');
-  }
+  await calculateAndDrawRoute({ silentBanner: false, fitMap: flyToRoute });
 }
 
 function fitRouteBounds(coordinates) {
@@ -437,105 +480,89 @@ function fitRouteBounds(coordinates) {
   const isMobile = window.innerWidth <= 768;
   map.fitBounds(bounds, {
     padding: isMobile
-      ? { top: 180, bottom: 90, left: 32, right: 32 }
-      : { top: 80, bottom: 90, left: 400, right: 80 },
+      ? { top: 150, bottom: 95, left: 32, right: 32 }
+      : { top: 80, bottom: 95, left: 400, right: 80 },
     pitch: state.terrainEnabled ? 48 : 0,
     maxZoom: 15.5,
-    duration: 900
+    duration: 850
   });
 }
 
-function applyOfflineDirectRoute({ silentBanner = false, fitMap = true } = {}) {
-  const coordinates = [
-    [state.pointA.lon, state.pointA.lat],
-    [state.pointB.lon, state.pointB.lat]
-  ];
-  const straightMeters = Math.max(1, haversineMeters(coordinates[0], coordinates[1]));
-  const estSeconds = straightMeters / 11.11; // ~40 km/h estimate
+async function calculateAndDrawRoute({ silentBanner = false, fitMap = true } = {}) {
+  if (!state.pointB) return;
 
+  const origin = { lat: state.playerPos.lat, lon: state.playerPos.lon };
+  const dest = state.pointB;
+
+  if (!silentBanner) {
+    setStatus('Расчёт маршрута...');
+    btnDrive.disabled = true;
+    btnStop.disabled = !state.tripActive;
+  }
+
+  let result = null;
+  let usedOfflineAStar = false;
+
+  if (navigator.onLine !== false) {
+    try {
+      result = await fetchDrivingRoute(origin, dest);
+    } catch (err) {
+      console.warn('OSRM unavailable, falling back to offline A* graph:', err?.message || err);
+    }
+  }
+
+  if (!result) {
+    try {
+      result = await findOfflineRoadRoute(origin, dest);
+      usedOfflineAStar = true;
+    } catch (offlineErr) {
+      console.error(offlineErr);
+      setStatus(offlineErr?.message || 'Ошибка построения маршрута', true);
+      if (!silentBanner) clearRouteLayer();
+      return;
+    }
+  }
+
+  const coordinates = result.geometry.coordinates;
   state.route = {
     coordinates,
-    distanceMeters: straightMeters,
-    durationSeconds: estSeconds,
-    isOfflineDirect: true
+    distanceMeters: result.distanceMeters,
+    durationSeconds: result.durationSeconds,
+    isOfflineRoad: usedOfflineAStar
   };
 
   const routeSource = map.getSource('route');
   if (routeSource) {
     routeSource.setData({
       type: 'Feature',
-      geometry: { type: 'LineString', coordinates }
+      geometry: result.geometry
     });
   }
-  setRouteLineStyle(true);
 
-  const kmStr = `${(straightMeters / 1000).toFixed(2)} КМ`;
-  const durStr = formatDuration(estSeconds);
+  updateEtaDisplays();
 
-  statDistanceEl.textContent = `${kmStr} (ПРЯМО)`;
-  statDurationEl.textContent = durStr;
-  setStatus('Офлайн-режим: прямой курс до цели. При появлении сети маршрут перестроится по дорогам.');
+  const kmStr = `${(result.distanceMeters / 1000).toFixed(2)} КМ`;
+  const durStr = formatDuration(result.durationSeconds);
+
+  setStatus(
+    usedOfflineAStar
+      ? 'Офлайн-маршрут по дорогам (A*)'
+      : state.tripActive
+        ? 'Поездка активна — ведение по маршруту'
+        : 'Маршрут готов. Нажмите «ПОЕХАЛИ».'
+  );
 
   btnDrive.disabled = state.tripActive;
   btnStop.disabled = !state.tripActive;
 
   if (fitMap) fitRouteBounds(coordinates);
-  if (!silentBanner) {
-    showGtaBanner('ПРЯМОЙ КУРС (ОФЛАЙН)', `${kmStr} • ${durStr}`, 'route');
-  }
-}
-
-async function calculateAndDrawRoute({ silentBanner = false, fitMap = true } = {}) {
-  if (!state.pointA || !state.pointB) return;
 
   if (!silentBanner) {
-    setStatus('Расчёт маршрута OSRM...');
-    btnDrive.disabled = true;
-    btnStop.disabled = true;
-  }
-
-  try {
-    const result = await fetchDrivingRoute(state.pointA, state.pointB);
-    const coordinates = result.geometry.coordinates;
-
-    state.route = {
-      coordinates,
-      distanceMeters: result.distanceMeters,
-      durationSeconds: result.durationSeconds,
-      isOfflineDirect: false
-    };
-
-    const routeSource = map.getSource('route');
-    if (routeSource) {
-      routeSource.setData({
-        type: 'Feature',
-        geometry: result.geometry
-      });
-    }
-    setRouteLineStyle(false);
-
-    const kmStr = `${(result.distanceMeters / 1000).toFixed(2)} КМ`;
-    const durStr = formatDuration(result.durationSeconds);
-
-    statDistanceEl.textContent = kmStr;
-    statDurationEl.textContent = durStr;
-    setStatus(
-      state.tripActive
-        ? 'Поездка активна — ведение по маршруту'
-        : 'Маршрут готов. Нажмите «ПОЕХАЛИ» для навигации.'
+    showGtaBanner(
+      usedOfflineAStar ? 'ОФЛАЙН-МАРШРУТ (A*)' : 'МАРШРУТ ПРОЛОЖЕН',
+      `${kmStr} • ${durStr}`,
+      'route'
     );
-
-    btnDrive.disabled = state.tripActive;
-    btnStop.disabled = !state.tripActive;
-
-    if (fitMap) fitRouteBounds(coordinates);
-
-    if (!silentBanner) {
-      showGtaBanner('МАРШРУТ ПРОЛОЖЕН', `${kmStr} • ${durStr}`, 'route');
-    }
-  } catch (err) {
-    console.warn('OSRM unavailable, using offline direct course:', err?.message || err);
-    applyOfflineDirectRoute({ silentBanner, fitMap });
   }
 }
 
@@ -545,13 +572,349 @@ function clearRouteLayer() {
   if (routeSource) {
     routeSource.setData({ type: 'FeatureCollection', features: [] });
   }
-  statDistanceEl.textContent = '— КМ';
-  statDurationEl.textContent = '— МИН';
+  updateEtaDisplays();
   btnDrive.disabled = true;
   btnStop.disabled = !state.tripActive;
 }
 
-// POI Blips Popup
+function clearDestinationAndRoute() {
+  state.pointB = null;
+  labelBEl.textContent = 'Удерживайте карту или найдите';
+  if (state.markerB) {
+    state.markerB.remove();
+    state.markerB = null;
+  }
+  clearRouteLayer();
+}
+
+// Active Trip («ПОЕХАЛИ» / «СТОП») + Auto-Collapse + Wake Lock
+async function startTrip() {
+  if (!state.route) return;
+  state.tripActive = true;
+  state.currentDistrict = null;
+  state.manualCameraUntil = 0;
+  clearTimeout(state.manualReturnTimer);
+
+  btnDrive.disabled = true;
+  btnStop.disabled = false;
+
+  setPanelCollapsed(true);
+  await acquireWakeLock();
+
+  if (!state.gps.active) {
+    startGpsTracking();
+  }
+
+  centerCameraOnPlayer(true);
+  setStatus(
+    state.route.isOfflineRoad
+      ? 'Офлайн-поездка активна (A*)'
+      : 'Поездка активна — ведение по маршруту'
+  );
+  updateEtaDisplays();
+}
+
+async function stopTrip() {
+  state.tripActive = false;
+  btnStop.disabled = true;
+  btnDrive.disabled = !state.route;
+  await releaseWakeLock();
+
+  map.easeTo({
+    pitch: state.terrainEnabled ? START_PITCH : 0,
+    duration: 500
+  });
+  setStatus(
+    state.route
+      ? 'Поездка остановлена. Нажмите «ПОЕХАЛИ».'
+      : 'Удерживайте точку на карте (0.5 сек) или введите адрес'
+  );
+  updateEtaDisplays();
+}
+
+async function completeRouteOnArrival() {
+  state.tripActive = false;
+  btnStop.disabled = true;
+  await releaseWakeLock();
+  clearDestinationAndRoute();
+  showGtaBanner('ЦЕЛЬ ДОСТИГНУТА', 'ВЫ ПРИБЫЛИ В ПУНКТ НАЗНАЧЕНИЯ', 'finished');
+  setStatus('Цель достигнута! Удерживайте карту для нового маршрута.');
+  map.easeTo({
+    pitch: state.terrainEnabled ? START_PITCH : 0,
+    duration: 600
+  });
+}
+
+btnDrive.addEventListener('click', startTrip);
+btnStop.addEventListener('click', stopTrip);
+
+// Free Camera Pause / Auto-Resume (5s after user stops panning/zooming)
+function pauseCameraAutoFollow(durationMs = 60000) {
+  state.manualCameraUntil = Date.now() + durationMs;
+  clearTimeout(state.manualReturnTimer);
+}
+
+function scheduleCameraResume() {
+  clearTimeout(state.manualReturnTimer);
+  state.manualCameraUntil = Date.now() + MANUAL_CAMERA_RETURN_MS;
+  state.manualReturnTimer = setTimeout(() => {
+    state.manualCameraUntil = 0;
+    if (state.gps.active) {
+      centerCameraOnPlayer(false);
+    }
+  }, MANUAL_CAMERA_RETURN_MS);
+}
+
+function centerCameraOnPlayer(immediatePitch = false) {
+  const coord = [state.playerPos.lon, state.playerPos.lat];
+  const pitch = state.terrainEnabled ? (state.tripActive || state.gps.active ? 62 : START_PITCH) : 0;
+  map.easeTo({
+    center: coord,
+    bearing: state.playerPos.heading,
+    pitch: immediatePitch ? (state.terrainEnabled ? 62 : 0) : pitch,
+    zoom: Math.max(map.getZoom(), 15.8),
+    duration: 600
+  });
+}
+
+map.on('dragstart', (e) => {
+  if (e.originalEvent) pauseCameraAutoFollow(60000);
+});
+map.on('dragend', (e) => {
+  if (e.originalEvent) scheduleCameraResume();
+});
+map.on('touchstart', (e) => {
+  if (e.originalEvent) pauseCameraAutoFollow(60000);
+});
+map.on('touchend', (e) => {
+  if (e.originalEvent) scheduleCameraResume();
+});
+map.on('wheel', () => {
+  pauseCameraAutoFollow(MANUAL_CAMERA_RETURN_MS);
+  scheduleCameraResume();
+});
+
+// Real GPS Tracking (auto-started, persists last coordinate in localStorage)
+function stopGpsTracking(updateStatusText = true) {
+  if (state.gps.watchId !== null && 'geolocation' in navigator) {
+    navigator.geolocation.clearWatch(state.gps.watchId);
+  }
+  state.gps.watchId = null;
+  state.gps.active = false;
+  state.gps.rerouting = false;
+  setToggleState(btnGps, false);
+  updateSpeedometer(0);
+
+  if (updateStatusText) {
+    setStatus('GPS отключён — показана последняя фиксация');
+  }
+}
+
+async function maybeRerouteFromGps(lat, lon) {
+  if (!state.tripActive || !state.pointB || !state.route?.coordinates?.length) return;
+  if (state.gps.rerouting) return;
+
+  const deviationMeters = distanceToPolylineMeters([lon, lat], state.route.coordinates);
+  const shouldUpgradeOnline = state.route.isOfflineRoad && navigator.onLine !== false;
+  if (!shouldUpgradeOnline && deviationMeters <= OFF_ROUTE_THRESHOLD_METERS) return;
+
+  const now = Date.now();
+  if (now - state.gps.lastRerouteAt < REROUTE_COOLDOWN_MS) return;
+
+  state.gps.lastRerouteAt = now;
+  state.gps.rerouting = true;
+  setStatus(
+    shouldUpgradeOnline
+      ? 'Сеть появилась — обновление по OSRM...'
+      : `Сход с маршрута (${Math.round(deviationMeters)} м) — перестроение...`
+  );
+
+  try {
+    await calculateAndDrawRoute({ silentBanner: true, fitMap: false });
+  } finally {
+    state.gps.rerouting = false;
+  }
+}
+
+function startGpsTracking() {
+  if (!('geolocation' in navigator)) {
+    setToggleState(btnGps, false);
+    setStatus('Геолокация не поддерживается браузером', true);
+    return;
+  }
+
+  state.gps.active = true;
+  state.gps.lastCoord = null;
+  setToggleState(btnGps, true);
+
+  state.gps.watchId = navigator.geolocation.watchPosition(
+    async (pos) => {
+      if (!state.gps.active) return;
+
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const coord = [lon, lat];
+
+      updateSpeedometer(pos.coords.speed);
+
+      let nextHeading = state.playerPos.heading;
+      if (typeof pos.coords.heading === 'number' && Number.isFinite(pos.coords.heading)) {
+        nextHeading = pos.coords.heading;
+      } else if (state.gps.lastCoord) {
+        const moved = haversineMeters(state.gps.lastCoord, coord);
+        if (moved > 2) {
+          nextHeading = bearingDegrees(state.gps.lastCoord, coord);
+        }
+      }
+      const smoothHeading = lerpAngle(state.playerPos.heading, nextHeading, 0.55);
+      state.gps.lastCoord = coord;
+
+      state.playerPos = { lat, lon, heading: smoothHeading };
+      saveGpsPos(lat, lon, smoothHeading);
+
+      ensurePlayerMarker(coord, smoothHeading);
+      checkDistrictEntry(lat, lon);
+
+      // Respect manual camera panning/zooming pause
+      if (Date.now() >= state.manualCameraUntil) {
+        map.easeTo({
+          center: coord,
+          bearing: smoothHeading,
+          pitch: state.terrainEnabled ? (state.tripActive ? 62 : START_PITCH) : 0,
+          zoom: Math.max(map.getZoom(), state.tripActive ? 16.0 : START_ZOOM),
+          duration: 500
+        });
+      }
+
+      if (state.pointB) {
+        const distToGoal = haversineMeters(coord, [state.pointB.lon, state.pointB.lat]);
+        if (distToGoal < ARRIVAL_RADIUS_METERS) {
+          await completeRouteOnArrival();
+          return;
+        }
+      }
+
+      if (state.route) {
+        updateEtaDisplays();
+      }
+
+      if (state.tripActive) {
+        await maybeRerouteFromGps(lat, lon);
+      } else if (state.pointB && !state.route) {
+        await calculateAndDrawRoute({ silentBanner: false, fitMap: false });
+      }
+    },
+    (err) => {
+      console.warn('Geolocation error:', err);
+      // Keep cursor at last saved valid coordinate!
+      stopGpsTracking(false);
+      setStatus('Сигнал GPS недоступен — курсор на последней позиции');
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 3000,
+      timeout: 10000
+    }
+  );
+}
+
+// Long-Press (~500ms) to Choose Destination + Confirmation Dialog (NO single-click placement!)
+const mapCanvas = map.getCanvas();
+let longPressTimer = null;
+let longPressOrigin = null;
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressOrigin = null;
+}
+
+function openDestinationConfirm(lat, lon) {
+  pauseCameraAutoFollow(10000);
+  state.pendingTarget = { lat, lon, label: `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  confirmModalPlaceEl.textContent = state.pendingTarget.label;
+  confirmModalEl.classList.remove('hidden');
+
+  if (navigator.vibrate) {
+    try {
+      navigator.vibrate(40);
+    } catch {
+      // Ignore vibration errors
+    }
+  }
+
+  reverseGeocode(lat, lon).then((resolved) => {
+    if (
+      state.pendingTarget &&
+      state.pendingTarget.lat === lat &&
+      state.pendingTarget.lon === lon
+    ) {
+      state.pendingTarget.label = resolved;
+      confirmModalPlaceEl.textContent = resolved;
+    }
+  });
+}
+
+mapCanvas.addEventListener('pointerdown', (e) => {
+  if (e.isPrimary === false) {
+    cancelLongPress();
+    return;
+  }
+  if (e.button && e.button !== 0) return;
+
+  cancelLongPress();
+  const rect = mapCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  longPressOrigin = { x, y };
+
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    if (!longPressOrigin) return;
+    const lngLat = map.unproject([longPressOrigin.x, longPressOrigin.y]);
+    longPressOrigin = null;
+    openDestinationConfirm(lngLat.lat, lngLat.lng);
+  }, LONG_PRESS_MS);
+});
+
+mapCanvas.addEventListener('pointermove', (e) => {
+  if (!longPressOrigin || !longPressTimer) return;
+  const rect = mapCanvas.getBoundingClientRect();
+  const dx = e.clientX - rect.left - longPressOrigin.x;
+  const dy = e.clientY - rect.top - longPressOrigin.y;
+  if (Math.hypot(dx, dy) > 10) {
+    cancelLongPress();
+  }
+});
+
+mapCanvas.addEventListener('pointerup', cancelLongPress);
+mapCanvas.addEventListener('pointercancel', cancelLongPress);
+mapCanvas.addEventListener(
+  'touchstart',
+  (e) => {
+    if (e.touches.length > 1) cancelLongPress();
+  },
+  { passive: true }
+);
+
+btnConfirmGo.addEventListener('click', async () => {
+  const target = state.pendingTarget;
+  state.pendingTarget = null;
+  confirmModalEl.classList.add('hidden');
+  if (!target) return;
+
+  await setDestination(target.lat, target.lon, target.label, false);
+  await startTrip();
+});
+
+btnConfirmCancel.addEventListener('click', () => {
+  state.pendingTarget = null;
+  confirmModalEl.classList.add('hidden');
+});
+
+// POI Blips Popup (single click on POI icon only)
 let activePoiPopup = null;
 
 function openPoiPopup(feature, clickLngLat) {
@@ -577,24 +940,12 @@ function openPoiPopup(feature, clickLngLat) {
     <button type="button" class="poi-card__btn">ПОЕХАТЬ СЮДА</button>
   `;
 
-  const goBtn = cardEl.querySelector('.poi-card__btn');
-  goBtn.addEventListener('click', async () => {
+  cardEl.querySelector('.poi-card__btn').addEventListener('click', async () => {
     if (activePoiPopup) {
       activePoiPopup.remove();
       activePoiPopup = null;
     }
-    if (!state.pointA) {
-      const startLon = state.gps.lastCoord ? state.gps.lastCoord[0] : START_CENTER[0];
-      const startLat = state.gps.lastCoord ? state.gps.lastCoord[1] : START_CENTER[1];
-      state.pointA = {
-        lat: startLat,
-        lon: startLon,
-        label: state.gps.active ? 'Моя позиция GPS' : 'Центр (53.0200, 158.6400)'
-      };
-      labelAEl.textContent = state.pointA.label;
-      attachWaypointMarker('A', startLat, startLon);
-    }
-    await setWaypoint('B', coords[1], coords[0], placeName, false);
+    await setDestination(coords[1], coords[0], placeName, true);
   });
 
   activePoiPopup = new maplibregl.Popup({
@@ -611,33 +962,79 @@ function openPoiPopup(feature, clickLngLat) {
 map.on('mouseenter', 'poi-blips', () => {
   map.getCanvas().style.cursor = 'pointer';
 });
-
 map.on('mouseleave', 'poi-blips', () => {
   map.getCanvas().style.cursor = '';
 });
 
-// Map Click: POI Blip Card OR Set Point A / B
+// Single click ONLY opens POI blip cards (never places Point B on empty map)
 map.on('click', (e) => {
-  if (state.tripActive) return;
   if (e.originalEvent?.target?.closest('.maplibregl-marker, .maplibregl-popup')) return;
-
   const poiHits = map.getLayer('poi-blips')
     ? map.queryRenderedFeatures(e.point, { layers: ['poi-blips'] })
     : [];
   if (poiHits.length > 0) {
     openPoiPopup(poiHits[0], e.lngLat);
-    return;
   }
-
-  const { lat, lng } = e.lngLat;
-  setWaypoint(state.pickTarget, lat, lng, null, false);
 });
 
-// Mode Switching: GTA SA vs Satellite
+// Top Sheet Swipe Up/Down + Click Collapse
+let sheetTouchStartY = null;
+let sheetTouchCurrentY = null;
+
+hudPanelEl.addEventListener(
+  'touchstart',
+  (e) => {
+    if (e.touches.length !== 1) return;
+    if (e.target.closest('.search-results, input, .offline-progress')) return;
+    sheetTouchStartY = e.touches[0].clientY;
+    sheetTouchCurrentY = sheetTouchStartY;
+  },
+  { passive: true }
+);
+
+hudPanelEl.addEventListener(
+  'touchmove',
+  (e) => {
+    if (sheetTouchStartY === null || e.touches.length !== 1) return;
+    sheetTouchCurrentY = e.touches[0].clientY;
+  },
+  { passive: true }
+);
+
+hudPanelEl.addEventListener('touchend', () => {
+  if (sheetTouchStartY === null || sheetTouchCurrentY === null) return;
+  const deltaY = sheetTouchCurrentY - sheetTouchStartY;
+  if (deltaY < -36) {
+    setPanelCollapsed(true);
+  } else if (deltaY > 36) {
+    setPanelCollapsed(false);
+  }
+  sheetTouchStartY = null;
+  sheetTouchCurrentY = null;
+});
+
+hudHeaderEl.addEventListener('click', (e) => {
+  if (e.target === btnCollapse) return;
+  setPanelCollapsed(!hudPanelEl.classList.contains('is-collapsed'));
+});
+
+btnCollapse.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setPanelCollapsed(!hudPanelEl.classList.contains('is-collapsed'));
+});
+
+// Compact Map Style Menu & Options
+btnStyleMenu.addEventListener('click', () => {
+  const isHidden = styleSubmenuEl.classList.toggle('hidden');
+  btnStyleMenu.setAttribute('aria-expanded', String(!isHidden));
+});
+
 function setMapMode(mode) {
   state.mapMode = mode;
   modeGtaBtn.classList.toggle('is-active', mode === 'gta');
   modeSatBtn.classList.toggle('is-active', mode === 'satellite');
+  styleMenuLabelEl.textContent =
+    mode === 'gta' ? 'СТИЛЬ КАРТЫ: GTA SA' : 'СТИЛЬ КАРТЫ: СПУТНИК';
 
   const isSat = mode === 'satellite';
   if (map.getLayer('satellite-layer')) {
@@ -660,7 +1057,29 @@ function setMapMode(mode) {
 modeGtaBtn.addEventListener('click', () => setMapMode('gta'));
 modeSatBtn.addEventListener('click', () => setMapMode('satellite'));
 
-// Search Handling
+optBuildingsEl.addEventListener('change', () => {
+  state.buildingsVisible = optBuildingsEl.checked;
+  if (map.getLayer('building-3d')) {
+    map.setLayoutProperty('building-3d', 'visibility', state.buildingsVisible ? 'visible' : 'none');
+  }
+});
+
+optBlipsEl.addEventListener('change', () => {
+  state.blipsVisible = optBlipsEl.checked;
+  if (map.getLayer('poi-blips')) {
+    map.setLayoutProperty('poi-blips', 'visibility', state.blipsVisible ? 'visible' : 'none');
+  }
+});
+
+optPlacesEl.addEventListener('change', () => {
+  state.placesVisible = optPlacesEl.checked;
+  const vis = state.placesVisible ? 'visible' : 'none';
+  for (const id of ['place-labels-districts', 'place-labels-city', 'peak-labels', 'water-labels']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  }
+});
+
+// Search Handling (sets Point B)
 let searchDebounce = null;
 
 async function runSearch() {
@@ -679,8 +1098,8 @@ async function runSearch() {
 
   if (offline) {
     searchResultsEl.innerHTML =
-      '<li><span class="search-results__meta">Офлайн: поиск недоступен — укажите Точку Б тапом по карте</span></li>';
-    setStatus('Нет сети — выберите Точку Б кликом по карте');
+      '<li><span class="search-results__meta">Офлайн: удерживайте точку на карте (0.5 сек) для выбора цели</span></li>';
+    setStatus('Нет сети — удерживайте точку на карте для выбора цели');
     return;
   }
 
@@ -700,7 +1119,7 @@ async function runSearch() {
       searchResultsEl.classList.add('hidden');
       searchInput.value = item.title;
       searchInput.blur();
-      setWaypoint('B', item.lat, item.lon, item.label, true);
+      setDestination(item.lat, item.lon, item.label, true);
     });
     searchResultsEl.appendChild(li);
   }
@@ -741,254 +1160,48 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Pick / Clear / Route Details
-pickABtn.addEventListener('click', () => setPickTarget('A'));
-pickBBtn.addEventListener('click', () => setPickTarget('B'));
-
+// Route Details & Clear
 btnRouteDetails.addEventListener('click', () => {
   const isHidden = routeDetailsBodyEl.classList.toggle('hidden');
   btnRouteDetails.setAttribute('aria-expanded', String(!isHidden));
 });
 
-btnClear.addEventListener('click', () => {
-  if (state.tripActive) stopTrip();
-  else if (state.gps.active) stopGpsTracking(false);
-
-  state.pointA = null;
-  state.pointB = null;
-  labelAEl.textContent = 'Кликните на карту';
-  labelBEl.textContent = 'Кликните на карту или найдите';
-  if (state.markerA) {
-    state.markerA.remove();
-    state.markerA = null;
+btnClear.addEventListener('click', async () => {
+  if (state.tripActive) {
+    await stopTrip();
   }
-  if (state.markerB) {
-    state.markerB.remove();
-    state.markerB = null;
-  }
-  if (state.playerMarker) {
-    state.playerMarker.remove();
-    state.playerMarker = null;
-  }
-  clearRouteLayer();
-  setPickTarget('A');
-  setStatus('Укажите Точку А и Точку Б для построения маршрута');
+  clearDestinationAndRoute();
+  setStatus('Удерживайте точку на карте (0.5 сек) или введите адрес');
 });
 
-// Active GPS Trip («ПОЕХАЛИ» / «СТОП») + Wake Lock + Auto-reroute
-async function startTrip() {
-  if (!state.route) return;
-  state.tripActive = true;
-  state.currentDistrict = null;
-  btnDrive.disabled = true;
-  btnStop.disabled = false;
-
-  // Auto-collapse top HUD panel for maximum road visibility
-  setPanelCollapsed(true);
-
-  await acquireWakeLock();
-  if (!state.gps.active) {
-    startGpsTracking();
-  }
-  setStatus('Поездка активна — ведение по маршруту');
-}
-
-async function stopTrip() {
-  state.tripActive = false;
-  btnStop.disabled = true;
-  btnDrive.disabled = !state.route;
-  await releaseWakeLock();
-  stopGpsTracking(false);
-
-  map.easeTo({
-    pitch: state.terrainEnabled ? START_PITCH : 0,
-    duration: 500
-  });
-  setStatus(
-    state.route
-      ? 'Поездка остановлена. Нажмите «ПОЕХАЛИ» для старта.'
-      : 'Укажите Точку А и Точку Б для построения маршрута.'
-  );
-}
-
-btnDrive.addEventListener('click', startTrip);
-btnStop.addEventListener('click', stopTrip);
-
-// Collapse HUD
-btnCollapse.addEventListener('click', () => {
-  const willCollapse = !hudPanelEl.classList.contains('is-collapsed');
-  setPanelCollapsed(willCollapse);
-});
-
-// Real GPS Tracking (navigator.geolocation.watchPosition)
-function stopGpsTracking(updateStatusText = true) {
-  if (state.gps.watchId !== null && 'geolocation' in navigator) {
-    navigator.geolocation.clearWatch(state.gps.watchId);
-  }
-  state.gps.watchId = null;
-  state.gps.active = false;
-  state.gps.rerouting = false;
-  btnGps.classList.remove('is-active');
-  updateSpeedometer(0);
-  syncStartAndPlayerMarkers();
-
-  if (updateStatusText) {
-    setStatus(
-      state.route
-        ? 'GPS отключён. Маршрут готов.'
-        : 'GPS отключён. Укажите Точку А и Точку Б.'
-    );
-  }
-}
-
-async function maybeRerouteFromGps(lat, lon) {
-  if (!state.tripActive || !state.pointB || !state.route?.coordinates?.length) return;
-  if (state.gps.rerouting) return;
-
-  if (state.route.isOfflineDirect && navigator.onLine === false) {
-    state.pointA = { lat, lon, label: state.pointA?.label || 'Моя позиция GPS' };
-    applyOfflineDirectRoute({ silentBanner: true, fitMap: false });
-    return;
-  }
-
-  const deviationMeters = distanceToPolylineMeters([lon, lat], state.route.coordinates);
-  const shouldUpgradeOnline = state.route.isOfflineDirect && navigator.onLine !== false;
-  if (!shouldUpgradeOnline && deviationMeters <= OFF_ROUTE_THRESHOLD_METERS) return;
-
-  const now = Date.now();
-  if (now - state.gps.lastRerouteAt < REROUTE_COOLDOWN_MS) return;
-
-  state.gps.lastRerouteAt = now;
-  state.gps.rerouting = true;
-  setStatus(
-    shouldUpgradeOnline
-      ? 'Сеть появилась — перестроение по дорогам...'
-      : `Сход с маршрута (${Math.round(deviationMeters)} м) — перестроение...`
-  );
-
-  try {
-    state.pointA = { lat, lon, label: state.pointA?.label || 'Моя позиция GPS' };
-    await calculateAndDrawRoute({ silentBanner: !shouldUpgradeOnline, fitMap: false });
-  } finally {
-    state.gps.rerouting = false;
-  }
-}
-
-function startGpsTracking() {
-  if (!('geolocation' in navigator)) {
-    setStatus('Геолокация не поддерживается вашим браузером', true);
-    return;
-  }
-
-  state.gps.active = true;
-  state.gps.lastCoord = null;
-  state.gps.lastGeoCoord = null;
-  btnGps.classList.add('is-active');
-  setStatus('Определение GPS-координат...');
-
-  state.gps.watchId = navigator.geolocation.watchPosition(
-    async (pos) => {
-      if (!state.gps.active) return;
-
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      const coord = [lon, lat];
-
-      // Real speed in km/h (0 if coords.speed is null)
-      updateSpeedometer(pos.coords.speed);
-
-      // Determine heading from device course or movement vector
-      let nextHeading = state.gps.heading;
-      if (typeof pos.coords.heading === 'number' && Number.isFinite(pos.coords.heading)) {
-        nextHeading = pos.coords.heading;
-      } else if (state.gps.lastCoord) {
-        const moved = haversineMeters(state.gps.lastCoord, coord);
-        if (moved > 2) {
-          nextHeading = bearingDegrees(state.gps.lastCoord, coord);
-        }
-      }
-      state.gps.heading = lerpAngle(state.gps.heading, nextHeading, 0.55);
-      state.gps.lastCoord = coord;
-
-      ensurePlayerMarker(coord, state.gps.heading);
-      checkDistrictEntry(lat, lon);
-
-      // Update Point A to current GPS position
-      const prevLabel = state.pointA?.label;
-      state.pointA = {
-        lat,
-        lon,
-        label: prevLabel && prevLabel !== 'Кликните на карту' ? prevLabel : 'Моя позиция GPS'
-      };
-      if (!state.gps.lastGeoCoord || haversineMeters(state.gps.lastGeoCoord, coord) > 60) {
-        state.gps.lastGeoCoord = coord;
-        labelAEl.textContent = state.pointA.label;
-        reverseGeocode(lat, lon).then((resolved) => {
-          if (state.gps.active && state.pointA) {
-            state.pointA.label = `GPS: ${resolved}`;
-            labelAEl.textContent = state.pointA.label;
-          }
-        });
-      }
-      attachWaypointMarker('A', lat, lon);
-
-      map.easeTo({
-        center: coord,
-        bearing: state.gps.heading,
-        pitch: state.terrainEnabled ? 62 : 0,
-        zoom: Math.max(map.getZoom(), 16.0),
-        duration: 500
-      });
-
-      if (state.tripActive) {
-        setStatus('Поездка активна — ведение по маршруту');
-        // Check arrival at destination B
-        if (state.pointB && haversineMeters(coord, [state.pointB.lon, state.pointB.lat]) <= 35) {
-          showGtaBanner('МАРШРУТ ЗАВЕРШЁН', 'ВЫ ПРИБЫЛИ В ПУНКТ Б', 'finished');
-          await stopTrip();
-          return;
-        }
-        // Check off-route deviation (> 45m) and auto-reroute (cooldown 6s)
-        await maybeRerouteFromGps(lat, lon);
-      } else {
-        setStatus('GPS-трекинг активен');
-        if (state.pointB && !state.route) {
-          await calculateAndDrawRoute({ silentBanner: false, fitMap: false });
-        }
-      }
-    },
-    (err) => {
-      console.warn('Geolocation error:', err);
-      stopGpsTracking(false);
-      if (state.tripActive) {
-        state.tripActive = false;
-        btnStop.disabled = true;
-        btnDrive.disabled = !state.route;
-        releaseWakeLock();
-      }
-      setStatus('Нет доступа к GPS или геолокация отключена в браузере', true);
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 3000,
-      timeout: 10000
-    }
-  );
+// Bottom-Right Visual Toggle Switches
+function setToggleState(btn, isOn) {
+  btn.classList.toggle('is-on', isOn);
+  btn.setAttribute('aria-pressed', String(isOn));
 }
 
 btnGps.addEventListener('click', () => {
   if (state.gps.active) {
-    if (state.tripActive) stopTrip();
-    else stopGpsTracking(true);
+    if (Date.now() < state.manualCameraUntil) {
+      // Immediately resume auto-centering on player when panned away
+      state.manualCameraUntil = 0;
+      clearTimeout(state.manualReturnTimer);
+      centerCameraOnPlayer(false);
+    } else if (state.tripActive) {
+      stopTrip().then(() => stopGpsTracking(true));
+    } else {
+      stopGpsTracking(true);
+    }
   } else {
+    state.manualCameraUntil = 0;
     startGpsTracking();
+    centerCameraOnPlayer(false);
   }
 });
 
-// Street Labels Visibility Toggle («УЛИЦЫ»)
 btnToggleStreets.addEventListener('click', () => {
   state.streetLabelsVisible = !state.streetLabelsVisible;
-  btnToggleStreets.classList.toggle('is-active', state.streetLabelsVisible);
+  setToggleState(btnToggleStreets, state.streetLabelsVisible);
 
   const visibility = state.streetLabelsVisible ? 'visible' : 'none';
   for (const layerId of ['road-labels-major', 'road-labels-streets']) {
@@ -998,7 +1211,6 @@ btnToggleStreets.addEventListener('click', () => {
   }
 });
 
-// 2D / 3D Toggle («3D РЕЛЬЕФ»)
 function apply3dBuildingsHeight(is3d) {
   if (!map.getLayer('building-3d')) return;
   map.setPaintProperty(
@@ -1020,7 +1232,7 @@ function apply3dBuildingsHeight(is3d) {
 
 btnToggle3d.addEventListener('click', () => {
   state.terrainEnabled = !state.terrainEnabled;
-  btnToggle3d.classList.toggle('is-active', state.terrainEnabled);
+  setToggleState(btnToggle3d, state.terrainEnabled);
 
   if (state.terrainEnabled) {
     map.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 });
@@ -1035,15 +1247,15 @@ btnToggle3d.addEventListener('click', () => {
   map.easeTo({ pitch: targetPitch, duration: 480 });
 });
 
-// Auto-upgrade offline direct route to real OSRM road route when back online
+// Auto-upgrade offline A* route to OSRM when back online
 window.addEventListener('online', () => {
-  if (state.pointA && state.pointB && state.route?.isOfflineDirect) {
-    setStatus('Сеть восстановлена — перестроение маршрута по дорогам...');
-    calculateAndDrawRoute({ silentBanner: false, fitMap: false });
+  if (state.pointB && state.route?.isOfflineRoad) {
+    setStatus('Сеть восстановлена — обновление маршрута через OSRM...');
+    calculateAndDrawRoute({ silentBanner: true, fitMap: false });
   }
 });
 
-// Offline Map Download (Petropavlovsk-Kamchatsky Grid zoom 11..15)
+// Offline Map Download (Petropavlovsk-Kamchatsky Grid zoom 11..15 + pk-roads.json)
 let offlineDownloadAbort = null;
 
 if (isOfflineMapCached()) {
@@ -1067,6 +1279,9 @@ btnDownloadMap.addEventListener('click', async () => {
   btnDownloadMap.textContent = 'ОТМЕНИТЬ ЗАГРУЗКУ';
 
   try {
+    // Also warm up local road graph JSON
+    loadRoadGraph().catch(() => {});
+
     await downloadPetropavlovskOfflineMap({
       signal: offlineDownloadAbort.signal,
       onProgress: (pct) => {
@@ -1080,7 +1295,7 @@ btnDownloadMap.addEventListener('click', async () => {
     offlineProgressTextEl.textContent = 'Карта в кэше';
     btnDownloadMap.classList.add('is-cached');
     btnDownloadMap.textContent = 'КАРТА В КЭШЕ ✓ (ОБНОВИТЬ)';
-    showGtaBanner('КАРТА В КЭШЕ', 'ПЕТРОПАВЛОВСК-КАМЧАТСКИЙ ГОТОВ К ОФЛАЙНУ', 'finished');
+    showGtaBanner('КАРТА В КЭШЕ', 'ГОРОД И ДОРОГИ ГОТОВЫ К ОФЛАЙНУ', 'finished');
   } catch (err) {
     if (err?.name !== 'AbortError') {
       offlineProgressTextEl.textContent = err?.message || 'Ошибка кэширования карты';

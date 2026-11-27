@@ -411,21 +411,6 @@ export function createGtaSaStyle() {
           'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 7.2, 18, 11.5]
         }
       },
-      {
-        id: 'route-line-dashed',
-        type: 'line',
-        source: 'route',
-        layout: {
-          'line-cap': 'butt',
-          'line-join': 'round',
-          visibility: 'none'
-        },
-        paint: {
-          'line-color': '#ffcc00',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 10, 4, 14, 7.2, 18, 11.5],
-          'line-dasharray': [2.2, 1.6]
-        }
-      },
 
       // 3D Buildings (#9c9c9c mid-gray for sharp contrast on #eaeaea blocks in 2D and 3D)
       {
